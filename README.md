@@ -1,65 +1,65 @@
-# ADC-Messkette — Charakterisierung des ATmega328P-ADC
+# ADC Measurement Chain — Characterizing the ATmega328P ADC
 
-Messung und Auswertung des Analog-Digital-Wandlers (ADC) eines Arduino UNO:
-Rauschen, Mittelungsgesetz, effektive Auflösung, Abtastrate.
+Measurement and analysis of the analog-to-digital converter (ADC) of an Arduino UNO:
+noise, averaging law, effective resolution, sampling rate.
 
-**Status:** in Arbeit (Tag 1 von 7)
+**Status:** work in progress (day 1 of 7)
 
-## Aufbau
+## Setup
 
-_(folgt)_
+_(to be added)_
 
 ## Hardware
 
-Arduino UNO (ATmega328P) mit aufgestecktem Experimentier-Shield.
+Arduino UNO (ATmega328P) with an experimenter shield attached.
 
-**Bestückung des Shields:**
+**Components on the shield:**
 
-- 1 Trimmpoti (blau, 2 kΩ, Einstellung per Schlitzschraubendreher) — Signalquelle für alle Messungen
-- 1 LDR (Light Dependent Resistor, Fotowiderstand) — zweiter Analogeingang
-- 7 Einzel-LEDs: 3 rot, 2 gelb, 2 grün
-- 1 RGB-LED (rot/grün/blau in einem Gehäuse, belegt drei Digitalpins)
-- 2 Taster (Tastfunktion, kein Rastschalter)
-- Vorwiderstände für alle LEDs
+- 1 trimmer potentiometer (blue, 2 kΩ, adjusted with a flathead screwdriver) — signal source for all measurements
+- 1 LDR (light dependent resistor) — second analog input
+- 7 single LEDs: 3 red, 2 yellow, 2 green
+- 1 RGB LED (red/green/blue in one package, occupies three digital pins)
+- 2 momentary push buttons (no latching switches)
+- Series resistors for all LEDs
 
-## Pinbelegung
+## Pin Assignment
 
-**Analogeingänge**
+**Analog inputs**
 
-| Bauteil | Pin | Bemerkung |
+| Component | Pin | Note |
 | :--- | :--- | :--- |
-| Trimmpoti | A? | Hauptsignalquelle |
-| LDR | A? | reagiert auf Umgebungslicht |
+| Trimmer potentiometer | A? | primary signal source |
+| LDR | A? | responds to ambient light |
 
-**Digitalpins — LEDs**
+**Digital pins — LEDs**
 
-| Bauteil | Pin |
+| Component | Pin |
 | :--- | :--- |
-| LED rot 1 | ? |
-| LED rot 2 | ? |
-| LED rot 3 | ? |
-| LED gelb 1 | ? |
-| LED gelb 2 | ? |
-| LED grün 1 | ? |
-| LED grün 2 | ? |
-| RGB-LED, Kanal rot | ? |
-| RGB-LED, Kanal grün | ? |
-| RGB-LED, Kanal blau | ? |
+| LED red 1 | ? |
+| LED red 2 | ? |
+| LED red 3 | ? |
+| LED yellow 1 | ? |
+| LED yellow 2 | ? |
+| LED green 1 | ? |
+| LED green 2 | ? |
+| RGB LED, red channel | ? |
+| RGB LED, green channel | ? |
+| RGB LED, blue channel | ? |
 
-**Digitalpins — Taster**
+**Digital pins — buttons**
 
-| Bauteil | Pin | Bemerkung |
+| Component | Pin | Note |
 | :--- | :--- | :--- |
-| Taster 1 | ? | `INPUT_PULLUP`, gedrückt = LOW |
-| Taster 2 | ? | `INPUT_PULLUP`, gedrückt = LOW |
+| Button 1 | ? | `INPUT_PULLUP`, pressed = LOW |
+| Button 2 | ? | `INPUT_PULLUP`, pressed = LOW |
 
-> Pins 0 und 1 bleiben frei — sie werden von der seriellen Schnittstelle belegt.
-> Damit stehen 12 Digitalpins (2–13) zur Verfügung, genau so viele wie das Shield benötigt.
+> Pins 0 and 1 are left unused — they are occupied by the serial interface.
+> This leaves 12 digital pins (2–13), exactly as many as the shield requires.
 
-## Messungen
+## Measurements
 
-_(folgt)_
+_(to be added)_
 
-## Fehlerquellen
+## Sources of Error
 
-_(folgt)_
+_(to be added)_
