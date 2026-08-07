@@ -20,13 +20,13 @@ Internal notes on the current state of work.
 
 | Component | Pin |
 | :--- | :--- |
-| Trimmer potentiometer | A_ |
-| LDR | A_ |
-| LED red 1 / 2 / 3 | _ / _ / _ |
-| LED yellow 1 / 2 | _ / _ |
-| LED green 1 / 2 | _ / _ |
-| RGB LED R / G / B | _ / _ / _ |
-| Button 1 / 2 | _ / _ |
+| Trimmer potentiometer | A0 |
+| LDR | A1 |
+| LED red 1 / 2 / 3 | 2 / 5 / 8 |
+| LED yellow 1 / 2 | 3 / 7 |
+| LED green 1 / 2 | 4 / 6 |
+| RGB LED G / R / B | 9 / 10 / 11 |
+| Button 1 / 2 | 12 / 13 |
 
 **Noise pre-test**
 
@@ -38,6 +38,15 @@ Internal notes on the current state of work.
 Raw output:
 
 - None
+
+**Observation — pin 11 (RGB blue)**
+
+During the button scan with `INPUT_PULLUP`, pins 2–10 each reported one spurious
+"pressed" event at startup: the weak internal pull-up (20–50 kΩ) cannot hold the pin
+above the logic threshold against an LED to ground, so the pin reads LOW. Pin 11 was
+the only one that stayed HIGH, because the blue LED has a forward voltage of roughly
+3.0–3.4 V versus 1.8–2.2 V for red/yellow/green. This confirms pin 11 as the blue
+channel of the RGB LED.
 
 **State of the code**
 
