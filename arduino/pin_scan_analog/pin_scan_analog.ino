@@ -11,5 +11,5 @@ void loop() {
     Serial.print("  ");
   }
   Serial.println();
-  delay(2000);
+  delay(500);
 }

@@ -56,6 +56,25 @@ Arduino UNO (ATmega328P) with an experimenter shield attached.
 > Pins 0 and 1 are left unused — they are occupied by the serial interface.
 > This leaves 12 digital pins (2–13), exactly as many as the shield requires.
 
+## Operating Point
+
+All measurements use the trimmer potentiometer on A0, adjusted to sit on the boundary
+between ADC codes 511 and 512. In this position the converter toggles between the two
+adjacent codes, which is the precondition for demonstrating the averaging law.
+
+| Property | Value |
+| :--- | :--- |
+| Signal source | trimmer potentiometer, A0 |
+| Operating point | code boundary 511 / 512 |
+| Short-term noise | σ = 0.457 LSB (200 samples over ≈ 1 s) |
+| Distinct codes | 2 (141 × 511, 59 × 512) |
+| Serial link | 115200 baud, raw values, timestamps from `micros()` |
+
+The noise amplitude is smaller than one quantisation step, so a single reading can
+never resolve better than 1 LSB. The mean of many readings can: at 141/59 the mean is
+511.295, a value the converter cannot output directly. This is dither, and recovering
+sub-LSB information from it is the central result this project sets out to quantify.
+
 ## Measurements
 
 _(to be added)_
@@ -102,3 +121,17 @@ as capacitive carryover rather than crosstalk in the wiring.
 The datasheet recommends a source impedance below 10 kΩ for this reason. All
 measurements in this project use the trimmer potentiometer on A0, which is read
 first in every scan and has a low enough source impedance to be unaffected.
+
+The cost of ignoring this is easy to quantify. Measured under identical conditions,
+200 samples each:
+
+| Input | σ [LSB] | range [LSB] |
+| :--- | ---: | ---: |
+| A0, trimmer potentiometer (low impedance) | 0.457 | 1 |
+| A5, unconnected (effectively infinite impedance) | 36.504 | 134 |
+
+A factor of roughly 80 in noise, from source impedance alone. The floating input was
+evaluated as an alternative signal source and rejected: its dominant contribution is
+mains-borne interference at 50 Hz, which is periodic rather than random. Correlated
+interference does not average down as 1/√N and would invalidate the averaging
+measurement.
