@@ -67,13 +67,49 @@ adjacent codes, which is the precondition for demonstrating the averaging law.
 | Signal source | trimmer potentiometer, A0 |
 | Operating point | code boundary 511 / 512 |
 | Short-term noise | σ = 0.457 LSB (200 samples over ≈ 1 s) |
-| Distinct codes | 2 (141 × 511, 59 × 512) |
+| Distinct codes | 2 — code 511 seen 141 times, code 512 seen 59 times |
 | Serial link | 115200 baud, raw values, timestamps from `micros()` |
 
-The noise amplitude is smaller than one quantisation step, so a single reading can
+The noise amplitude is smaller than one quantization step, so a single reading can
 never resolve better than 1 LSB. The mean of many readings can: at 141/59 the mean is
-511.295, a value the converter cannot output directly. This is dither, and recovering
-sub-LSB information from it is the central result this project sets out to quantify.
+511.295, a value the converter cannot output directly. This is dither, and how much
+sub-LSB information can be recovered from it is the central question this project
+sets out to answer.
+
+## Design Decisions
+
+### Timestamps are generated on the Arduino, not on the PC
+
+The obvious alternative is to timestamp each sample in Python when the line arrives.
+That would measure the wrong thing. Between the conversion and the arrival of the
+line in Python sit the USB transfer, operating system buffers and the Windows
+scheduler — none of which have anything to do with the ADC. The timestamp is
+therefore taken with `micros()` immediately before `analogRead()`, as close to the
+conversion as the platform allows.
+
+The residual gap between the two calls is a known limitation and is quantified in
+measurement 4.
+
+### The Arduino transmits raw codes; conversion to volts happens in Python
+
+Voltage is obtained from the raw code as
+
+    V = raw × VREF / 1023
+
+with VREF nominally 5.0 V. The conversion is deliberately left to the analysis stage
+for three reasons:
+
+1. **Raw data is lossless.** An integer in the range 0–1023 is exactly what the
+   converter produced. A floating point voltage is already an interpretation, and
+   the interpretation may turn out to be wrong.
+2. **VREF is not yet known.** A USB supply typically sits between 4.6 V and 5.1 V
+   rather than at exactly 5.00 V. Once the true value is determined via the internal
+   1.1 V bandgap reference, correcting it means changing one constant in the analysis
+   script — not repeating every measurement.
+3. **The Arduino stays fast.** The ATmega328P has no floating point unit; division
+   and float formatting are emulated in software and cost far more time than the
+   conversion itself. Since the sampling rate is one of the quantities being
+   measured, the acquisition path is kept as short as possible.
 
 ## Measurements
 
@@ -130,8 +166,13 @@ The cost of ignoring this is easy to quantify. Measured under identical conditio
 | A0, trimmer potentiometer (low impedance) | 0.457 | 1 |
 | A5, unconnected (effectively infinite impedance) | 36.504 | 134 |
 
-A factor of roughly 80 in noise, from source impedance alone. The floating input was
-evaluated as an alternative signal source and rejected: its dominant contribution is
-mains-borne interference at 50 Hz, which is periodic rather than random. Correlated
-interference does not average down as 1/√N and would invalidate the averaging
-measurement.
+A factor of roughly 80 in noise, from source impedance alone.
+
+The floating input was evaluated as an alternative signal source and rejected. Its
+excursions are far larger than thermal noise alone would account for, which points to
+coupled interference from the environment — mains hum being the obvious candidate.
+This was not verified spectrally and is stated as a hypothesis, not a result. It is
+nevertheless sufficient grounds for rejection: interference of any periodic origin is
+correlated between successive samples, and correlated contributions do not average
+down as 1/√N. Using such a source would undermine the very measurement it was meant
+to enable.

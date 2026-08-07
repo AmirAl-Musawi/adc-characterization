@@ -4,7 +4,7 @@ Internal notes on the current state of work.
 
 ---
 
-## Fri 2026-08-07
+## Fri 2026-08-07 — complete
 
 **Done**
 
@@ -13,7 +13,7 @@ Internal notes on the current state of work.
 - [✓] Git repository created locally and on GitHub, first commits pushed
 - [✓] Pin assignment determined
 - [✓] Noise pre-test carried out
-- [ ] ADC logger sketch written and verified in the serial monitor
+- [✓] ADC logger sketch written and verified in the serial monitor
 
 **COM port:** COM3
 
@@ -47,14 +47,16 @@ Do not touch the trimmer.**
 Reasoning:
 
 - A0 sits almost exactly on a code boundary (141 / 59 split). The noise is smaller
-  than one quantisation step, so the converter only toggles between two adjacent
+  than one quantization step, so the converter only toggles between two adjacent
   codes. The mean therefore carries sub-LSB information — this is dither, and it is
   what makes the averaging law demonstrable.
 - A1 offers no advantage over A0 and depends on ambient light, which is not
   controllable.
-- A5 has by far the most noise, but it is mains-borne interference at 50 Hz, i.e.
-  periodic and correlated. Periodic interference does not average down as 1/sqrt(N),
-  so it would break measurement 2. Kept as a comparison data point only.
+- A5 has by far the most noise, but its excursions are too large to be thermal noise
+  alone. Coupled interference from the environment is the likely cause; mains hum is
+  the obvious candidate, though this was not verified. Interference of any periodic
+  origin is correlated between successive samples and therefore does not average down
+  as 1/sqrt(N), which would break measurement 2. Kept as a comparison data point only.
 
 Raw output — A0 (trimmer potentiometer, working point):
 
@@ -120,22 +122,25 @@ channel of the RGB LED.
 
 **State of the code**
 
-- `arduino/pin_analog/` — scans A0–A5, used to identify the potentiometer and the LDR
-- `arduino/pin_leds/` — cycles digital pins 2–13, used to identify the LEDs
-- `arduino/pin_buttons/` — reads pins 2–13 with `INPUT_PULLUP`, used to identify the buttons
-- `arduino/rausch_vortest/` — 200 samples, reports min/max/mean/sigma and a value tally
-- `arduino/adc_logger/` — in progress (block 6). Target output format:
-  `micros(),analogRead(A0)`, one line per sample, 115200 baud.
-  Timestamp is taken on the Arduino, conversion to volts happens in Python.
-  **Replace this line once the sketch is uploaded and verified.**
+- `arduino/pin_scan_analog/` — scans A0–A5, used to identify the potentiometer and the LDR
+- `arduino/pin_scan_leds/` — cycles digital pins 2–13, used to identify the LEDs
+- `arduino/pin_scan_buttons/` — reads pins 2–13 with `INPUT_PULLUP`, used to identify the buttons
+- `arduino/noise_pretest/` — 200 samples, reports min/max/mean/sigma and a value tally
+- `arduino/adc_logger/` — reads A0 and prints one line per sample as
+  `micros(),analogRead(A0)`, i.e. elapsed time in µs and the raw ADC value, at
+  115200 baud. The timestamp is taken on the Arduino; conversion to volts happens
+  in Python.
 
 **Next steps (Monday)**
 
-1. Write `python/logger.py`: open the serial port, wait 2 s, flush the input buffer,
+1. Re-run the noise pre-test on A0 and confirm the working point is still around
+   140 / 60. If not, re-adjust the trimmer to the code boundary before anything else.
+   Nothing recorded afterwards is comparable if this step is skipped.
+2. Write `python/logger.py`: open the serial port, wait 2 s, flush the input buffer,
    read lines and write a CSV with columns `sample_index`, `t_us`, `raw`.
    Count malformed lines instead of crashing.
-2. First plot: raw value over sample index, axis labels and units, saved to `docs/`.
-3. Record at least 30 000 samples in one run for Tuesday's averaging analysis.
+3. First plot: raw value over sample index, axis labels and units, saved to `docs/`.
+4. Record at least 30 000 samples in one run for Tuesday's averaging analysis.
 
 **Open questions**
 

@@ -5,6 +5,9 @@ void setup() {
 }
 
 void loop() {
-  Serial.println(analogRead(POTI_PIN));
-  delay(300);
+  unsigned long t_us = micros();
+  int raw = analogRead(POTI_PIN);
+  Serial.print(t_us);
+  Serial.print(",");
+  Serial.println(raw);
 }
