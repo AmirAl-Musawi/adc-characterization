@@ -35,23 +35,23 @@ Arduino UNO (ATmega328P) with an experimenter shield attached.
 
 | Component | Pin |
 | :--- | :--- |
-| LED red 1 | ? |
-| LED red 2 | ? |
-| LED red 3 | ? |
-| LED yellow 1 | ? |
-| LED yellow 2 | ? |
-| LED green 1 | ? |
-| LED green 2 | ? |
-| RGB LED, red channel | ? |
-| RGB LED, green channel | ? |
-| RGB LED, blue channel | ? |
+| LED red 1 | 2 |
+| LED red 2 | 5 |
+| LED red 3 | 8 |
+| LED yellow 1 | 3 |
+| LED yellow 2 | 7 |
+| LED green 1 | 4 |
+| LED green 2 | 6 |
+| RGB LED, green channel | 9 |
+| RGB LED, red channel | 10 |
+| RGB LED, blue channel | 11 |
 
 **Digital pins — buttons**
 
 | Component | Pin | Note |
 | :--- | :--- | :--- |
-| Button 1 | ? | `INPUT_PULLUP`, pressed = LOW |
-| Button 2 | ? | `INPUT_PULLUP`, pressed = LOW |
+| Button 1 | 12 | `INPUT_PULLUP`, pressed = LOW |
+| Button 2 | 13 | `INPUT_PULLUP`, pressed = LOW |
 
 > Pins 0 and 1 are left unused — they are occupied by the serial interface.
 > This leaves 12 digital pins (2–13), exactly as many as the shield requires.
