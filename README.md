@@ -76,26 +76,49 @@ never resolve better than 1 LSB. The mean of many readings can: at 141/59 the me
 sub-LSB information can be recovered from it is the central question this project
 sets out to answer.
 
-### Stability over three days
+### Drift of the operating point
 
-The operating point was re-checked before any recording on the second day of work.
-The trimmer had not been touched in the intervening period.
+The trimmer has not been touched since it was set on 2026-08-07. Every capture since
+then records where the operating point actually sat at that moment.
 
-| | 2026-08-07, 17:xx | 2026-08-10, 12:40 |
-| :--- | ---: | ---: |
-| split 511 / 512 | 141 / 59 | 41 / 159 |
-| mean [LSB] | 511.295 | 511.795 |
-| sigma [LSB] | 0.457 | 0.405 |
+| | 08-07 | 08-10 12:40 | 08-10 18:40 | 08-10 19:15 |
+| :--- | ---: | ---: | ---: | ---: |
+| samples | 200 | 200 | 1000 | 1000 |
+| count 511 / 512 | 141 / 59 | 41 / 159 | 171 / 829 | 163 / 837 |
+| fraction at 511 | 0.705 | 0.205 | 0.171 | 0.163 |
+| mean [LSB] | 511.295 | 511.795 | 511.829 | 511.837 |
+| sigma [LSB] | 0.457 | 0.405 | 0.3765 | 0.3694 |
 
-The operating point is still on the same code boundary, but the mean has moved by
-+0.5 LSB. The trimmer was deliberately left untouched: a mechanical adjustment on a
-code boundary is riskier than a slightly different split, and the shift is itself a
-measurement of long-term stability rather than a fault to be corrected.
+The operating point has stayed on the same code boundary throughout, but the mean has
+moved monotonically towards code 512: +0.500 LSB over the weekend, a further
++0.042 LSB across six hours of the same day. The direction never reverses. The
+trimmer was deliberately left untouched — a mechanical adjustment on a code boundary
+is riskier than a slightly different split, and the shift is itself a measurement of
+long-term stability rather than a fault to be corrected.
 
-The lower sigma does not indicate less noise. For a two-level process
-σ = sqrt(p·(1−p)), and p = 41/200 = 0.205 gives 0.404 against the 0.405 reported by
-the sketch. Sigma is maximal at a 50/50 split and falls off towards either side, so
-it measures how often the code boundary is crossed, not the amplitude of the noise.
+**The falling sigma does not indicate falling noise.** For a two-level process
+σ = sqrt(p·(1−p)), which is maximal at a 50/50 split and decreases towards either
+side. The measured values agree with that expression to four decimal places
+(0.171 → 0.37651 against 0.3765 measured; 0.163 → 0.36936 against 0.3694). Sigma here
+is a measure of how often the code boundary is crossed, not of the amplitude of the
+noise, and it falls simply because the signal has drifted away from the boundary.
+
+### Reproducibility
+
+Two runs of 1000 samples, recorded roughly half an hour apart under identical
+conditions:
+
+| | run 1 | run 2 | difference |
+| :--- | ---: | ---: | ---: |
+| mean [LSB] | 511.829 | 511.837 | 0.008 |
+| sigma [LSB] | 0.3765 | 0.3694 | 1.9 % |
+| bad lines | 0 | 0 | — |
+
+A deviation in sigma of under 5 % is within what a two-level process with 1000
+samples produces by chance alone, and the shift in the mean is consistent with the
+drift trend above rather than with instability of the setup. The measurement chain
+therefore returns the same answer twice, which is the precondition for the results
+that follow to mean anything.
 
 ## Design Decisions
 
@@ -186,6 +209,13 @@ gave timestamp differences of exactly 1020 µs, with no scatter:
 
 Earlier the same day, with a seven-digit timestamp instead of six, the interval was
 1104–1108 µs. The difference of ~85 µs is one character.
+
+The effect is also visible **inside a single capture**. A run of 1000 samples starting
+at t ≈ 464 000 µs reports a mean interval of 1060.5 µs, a value that occurs nowhere in
+the data: the individual intervals take exactly two values, 1020 µs and 1105 µs, and
+nothing in between. The transition falls at t = 1 000 000 µs, where the timestamp
+gains its seventh digit. Approximately 523 of the 999 intervals fall before that point
+and 476 after it, which reproduces the observed mean to within a microsecond.
 
 **The character time gives the true baud rate.** At 16 MHz in double-speed mode the
 UART divisor is UBRR = 16, so the actual bit rate is

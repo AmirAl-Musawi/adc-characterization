@@ -13,9 +13,10 @@ Internal notes on the current state of work.
    Nothing recorded afterwards is comparable if this step is skipped.
 - [✓] Verify the serial path from Python before writing anything larger
       (`python/porttest.py`).
-- [ ] Write `python/logger.py`: open the serial port, wait 2 s, flush the input buffer,
+- [✓] Write `python/logger.py`: open the serial port, wait 2 s, flush the input buffer,
    read lines and write a CSV with columns `sample_index`, `t_us`, `raw`.
    Count malformed lines instead of crashing.
+- [✓] Two 1000-sample runs recorded, reproducibility checked.
 - [ ] First plot: raw value over sample index, axis labels and units, saved to `docs/`.
 - [ ] Record at least 800 000 samples in one run for Tuesday's averaging analysis.
 
@@ -136,6 +137,63 @@ behaviour is kept as a documented result, not discarded.
 
 Revised expectations for the main run: 800 000 samples take about 17 minutes and
 produce roughly 17-18 MB. The control run of 500 000 samples takes about 11 minutes.
+
+**`logger.py`**
+
+Takes `--port`, `--baud`, `--n`, `--out` and `--note`. Creates the target directory,
+opens the port, waits 2 s, flushes, discards five lines, then reads until `n` valid
+samples are collected. Malformed lines are counted rather than fatal; fifty malformed
+lines in a row abort the run on the assumption that the board has been disconnected.
+`Ctrl+C` is caught around the loop so that a long capture can be stopped without
+losing what has been collected. Writes a `#`-prefixed metadata header followed by
+`sample_index,t_us,raw`, then prints a summary.
+
+Verification run, `--n 20`:
+
+```
+samples:        20 of 20 requested
+bad lines:      0
+duration:       0.019 s
+effective rate: 980.4 samples/s
+mean interval:  1020.0 us
+```
+
+The mean interval matches the prediction of 12 characters x 85.0 us exactly. The
+duration corresponds to 19 intervals rather than 20, confirming that the rate is
+computed over `n-1` gaps.
+
+**Two 1000-sample runs (18:40 and 19:15)**
+
+```
+run 1: 1000 samples, 0 bad lines, 1.059 s, 943.0 sps, mean interval 1060.5 us
+run 2: 1000 samples, 0 bad lines, 1.059 s, 943.0 sps, mean interval 1060.4 us
+```
+
+| | run 1 | run 2 |
+| :--- | ---: | ---: |
+| count 511 / 512 | 171 / 829 | 163 / 837 |
+| mean [LSB] | 511.829 | 511.837 |
+| sigma [LSB] | 0.3765 | 0.3694 |
+
+Sigma differs by 1.9 %, the mean by 0.008 LSB. Both are within what 1000 samples of a
+two-level process produce by chance, so the setup is reproducible. Cross-check against
+sqrt(p(1-p)): 0.171 gives 0.37651, 0.163 gives 0.36936 — agreement to four decimals.
+
+The fraction at code 511 continues to fall: 0.205 at 12:40, 0.171 at 18:40, 0.163 at
+19:15. The mean rises correspondingly. Same direction as the weekend shift, no
+reversal.
+
+**The digit transition is visible inside one file**
+
+The mean interval of 1060.5 us in run 1 occurs nowhere in the data. The individual
+intervals take exactly two values, 1020 us and 1105 us, with nothing in between. The
+transition sits at t = 1 000 000 us, where the timestamp gains its seventh digit:
+about 523 of the 999 intervals fall before it and 476 after, which reproduces the
+observed mean to within a microsecond.
+
+This is stronger evidence for the transmission-bound behaviour than the earlier
+comparison of two separate runs, and it settles the case for padding the timestamp
+before the main measurement.
 
 **Open questions**
 
@@ -278,3 +336,6 @@ channel of the RGB LED.
   in Python.
 - `python/porttest.py` — opens COM3, waits for the bootloader, flushes the buffer and
   prints ten lines. Used once to verify the serial path before writing `logger.py`.
+- `python/logger.py` — the acquisition tool. Command line arguments for port, baud
+  rate, sample count, output path and a free-text note; writes a CSV with a metadata
+  header and reports the effective sampling rate.
