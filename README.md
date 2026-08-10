@@ -7,7 +7,7 @@ noise, averaging law, effective resolution, sampling rate.
 
 ## Setup
 
-![Measurement setup: Arduino UNO with experimenter shield, trimmer potentiometer on A0](docs/setup.jpg)
+![Measurement setup: Arduino UNO with experimenter shield, trimmer potentiometer on A0](docs/setup.png)
 
 The signal source is the trimmer potentiometer on the experimenter shield, connected
 as a voltage divider with its wiper on analog input A0. Nothing is added externally;
