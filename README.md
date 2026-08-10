@@ -5,6 +5,19 @@ noise, averaging law, effective resolution, sampling rate.
 
 **Status:** work in progress (day 2 of 7)
 
+**Results so far**
+
+- The sampling rate is set by the serial link, not by the converter. The true bit rate,
+  117 647 baud rather than the nominal 115 200, was recovered from the timestamps alone.
+- Averaging follows the 1/√N law only up to N ≈ 8–16. Beyond that the standard
+  deviation of block means settles at a floor of about **0.025 LSB**, independent of N.
+- That floor is not caused by correlation between neighbouring samples: the
+  autocorrelation stays below 0.03 for lags up to ~140. It is low-frequency wander of
+  the operating point.
+- The operating point drifted by 0.67 LSB over three days while sitting stable to
+  better than 0.005 LSB over any given quarter of an hour, and it moved once by
+  0.187 LSB in under 1.3 seconds.
+
 ## Setup
 
 ![Measurement setup: Arduino UNO with experimenter shield, trimmer potentiometer on A0](docs/setup.png)
@@ -366,6 +379,80 @@ boundary often enough that a window of the chosen length reliably contains cross
 As the operating point drifts away from the boundary, averaging degrades gracefully at
 first and then stops working altogether — not because the mathematics changes, but
 because the crossings run out.
+
+### The averaging law
+
+Standard deviation of block means over the 800 000-sample run, block sizes from 1 to
+16 384 samples:
+
+![Standard deviation of block means against block size, compared with the 1/sqrt(N) prediction](docs/sqrt_n_law.png)
+
+| N | blocks | σ measured [LSB] | σ theory [LSB] | ratio | ± |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 800 000 | 0.175756 | 0.175756 | 1.000 | 0.1 % |
+| 2 | 400 000 | 0.123808 | 0.124279 | 0.996 | 0.1 % |
+| 4 | 200 000 | 0.091522 | 0.087878 | 1.041 | 0.2 % |
+| 8 | 100 000 | 0.066604 | 0.062139 | 1.072 | 0.2 % |
+| 16 | 50 000 | 0.052191 | 0.043939 | 1.188 | 0.3 % |
+| 32 | 25 000 | 0.042140 | 0.031070 | 1.356 | 0.4 % |
+| 64 | 12 500 | 0.035075 | 0.021970 | 1.597 | 0.6 % |
+| 128 | 6 250 | 0.029823 | 0.015535 | 1.920 | 0.9 % |
+| 256 | 3 125 | 0.027823 | 0.010985 | 2.533 | 1.3 % |
+| 512 | 1 562 | 0.026684 | 0.007767 | 3.435 | 1.8 % |
+| 1 024 | 781 | 0.026133 | 0.005492 | 4.758 | 2.5 % |
+| 2 048 | 390 | 0.025039 | 0.003884 | 6.447 | 3.6 % |
+| 4 096 | 195 | 0.024361 | 0.002746 | 8.871 | 5.1 % |
+| 8 192 | 97 | 0.019570 | 0.001942 | 10.078 | 7.2 % |
+| 16 384 | 48 | 0.004583 | 0.001373 | 3.338 | 10.3 % |
+
+The measurement leaves the theory early. Up to N = 8 the agreement is within 7 %; by
+N = 64 the measured value is 60 % above the prediction, and from N ≈ 128 onwards the
+curve is flat rather than falling. Between N = 128 and N = 4096 — a range of 32 in
+block size, over which the theory predicts a fall by a factor of 5.7 — the measured
+standard deviation moves only from 0.0298 to 0.0244 LSB.
+
+**A floor that does not depend on N is the signature of low-frequency noise.** White
+noise averages down as 1/√N by construction. Noise whose power grows towards low
+frequencies does not: whatever window you choose, a slow wander contributes the same
+amount, because lengthening the window admits correspondingly slower components. The
+plateau at ≈ 0.025 LSB is therefore the level at which the operating point wanders on
+its own, and no amount of further averaging removes it.
+
+In practical terms: averaging improves this measurement chain by a factor of about 7,
+from σ = 0.176 LSB to σ ≈ 0.025 LSB, and reaches that limit after roughly 0.16 s of
+averaging (N ≈ 128). Averaging for longer than that costs time and returns nothing.
+
+Two caveats are stated rather than hidden. The point at N = 16 384 rests on 48 blocks
+and carries a 10 % uncertainty on the estimate alone; a block of that length is
+21 seconds, comparable to the timescale of the wander itself, so the sharp drop is not
+interpreted here. And the σ quoted for N = 1 is the standard deviation of a two-level
+process, which measures how often the code boundary is crossed rather than the
+amplitude of the underlying noise; the ratio column is meaningful, its absolute
+baseline is not.
+
+### Are the samples independent?
+
+If neighbouring samples were correlated, the early departure from 1/√N would be
+explained by that alone, and the plateau would need no further account. They are not:
+
+![Normalised autocorrelation of the first 50 000 samples, lags 0 to 200](docs/autocorrelation.png)
+
+Beyond lag 0 the autocorrelation stays below about 0.03 for lags up to ~140, against a
+95 % significance band of ±0.0088 for uncorrelated data. Individual lags do cross the
+band — more of them than chance alone would produce — but the magnitudes are small, and
+they carry nothing like the weight needed to explain a factor of 8 shortfall at
+N = 4096. **The plateau is a low-frequency effect, not a sample-to-sample one.**
+
+No mains signature was found. At 1276.7 µs per sample one 50 Hz period spans 15.67
+samples, and the dotted guides in the figure mark its multiples. The peaks in the data
+do not fall on them.
+
+Two features are left open. Isolated peaks near lags 152 and 160 reach 0.11 and 0.17,
+far outside the band; at this sampling interval those lags correspond to 194 and
+204 ms, i.e. roughly 5 Hz. No mechanism is proposed for them here. The first check is
+whether they reproduce on a different 50 000-sample segment — at an event rate of 3 %
+the autocorrelation is dominated by sparse crossings, and isolated large values can
+arise from that alone.
 
 ### A note on the drift direction
 

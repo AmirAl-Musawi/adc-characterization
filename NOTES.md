@@ -4,7 +4,7 @@ Internal notes on the current state of work.
 
 ---
 
-## Mon 2026-08-10 — in progress
+## Mon 2026-08-10 — complete
 
 **Plan**
 
@@ -337,16 +337,105 @@ Figure conventions adopted for the rest of the project: axis labels with units, 
 only at codes the converter can actually output, markers instead of lines for
 two-level data, absolute tick labels (no matplotlib offset annotation), 150 dpi.
 
+**Averaging law and autocorrelation (22:50-23:40)**
+
+`python/analysis/analyse_main_run.py` folds the 800 000 samples into blocks of
+1 to 16 384, takes the mean of each block and the standard deviation of those means,
+and compares against sigma_1/sqrt(N). It then evaluates the autocorrelation of the
+first 50 000 samples for lags 0 to 200, lag by lag as dot products rather than a full
+O(n^2) correlation.
+
+```
+N        blocks   sigma_meas   sigma_theory   ratio
+1        800000   0.175756     0.175756       1.000
+2        400000   0.123808     0.124279       0.996
+4        200000   0.091522     0.087878       1.041
+8        100000   0.066604     0.062139       1.072
+16        50000   0.052191     0.043939       1.188
+32        25000   0.042140     0.031070       1.356
+64        12500   0.035075     0.021970       1.597
+128        6250   0.029823     0.015535       1.920
+256        3125   0.027823     0.010985       2.533
+512        1562   0.026684     0.007767       3.435
+1024        781   0.026133     0.005492       4.758
+2048        390   0.025039     0.003884       6.447
+4096        195   0.024361     0.002746       8.871
+8192         97   0.019570     0.001942      10.078
+16384        48   0.004583     0.001373       3.338
+```
+
+**This is the main result of the day.** The 1/sqrt(N) law holds to within 7 % up to
+N = 8 and then leaves the theory. From N = 128 onward the curve is flat: over a range
+of 32 in block size, where theory predicts a fall by 5.7, the measured value moves only
+from 0.0298 to 0.0244 LSB.
+
+A floor independent of N is the signature of low-frequency noise. White noise averages
+down by construction; noise with power rising towards low frequencies does not, because
+a longer window admits correspondingly slower components. So averaging improves this
+chain by a factor of about 7 - from 0.176 to roughly 0.025 LSB - and reaches that limit
+after about 0.16 s (N = 128). Averaging longer buys nothing.
+
+Not interpreted: the N = 16384 point. 48 blocks, 10 % uncertainty on the estimate
+alone, and a block length of 21 s comparable to the timescale of the wander itself.
+Needs more block sizes and possibly overlapping blocks on Tuesday.
+
+Worth remembering when quoting numbers: sigma at N = 1 is the standard deviation of a
+two-level process and measures boundary-crossing frequency, not noise amplitude. The
+ratio column is meaningful, the absolute baseline is not.
+
+**Autocorrelation**
+
+```
+50000 samples, lags 0..200
+a 50 Hz disturbance would appear with a period of 15.67 samples
+acf[1] = -0.0100, significance band +/- 0.0088
+lags outside the band: [1, 3, 4, 5, 6, 7, 8, 9, 12, 14, 15, 16, 18, 19, 20, 22, 24, 25, 26, 29] ...
+```
+
+Short-lag correlation is small: below about 0.03 up to lag ~140. More lags cross the
+95 % band than chance would give, but the magnitudes are nowhere near enough to explain
+a factor of 8 shortfall at N = 4096. The plateau is therefore a low-frequency effect,
+not a sample-to-sample one. Worth stating explicitly, because sample correlation was
+the obvious first suspect and it has now been ruled out with data.
+
+No mains signature. The dotted guides at multiples of 15.67 samples do not line up with
+the peaks.
+
+Open: isolated peaks near lags 152 and 160 reaching 0.11 and 0.17, far outside the
+band, corresponding to 194 and 204 ms or roughly 5 Hz. First check on Tuesday is
+whether they reproduce on a different 50 000-sample segment. At a 3 % event rate the
+autocorrelation is dominated by sparse crossings and isolated large values can arise
+from that alone.
+
+Figures: `docs/sqrt_n_law.png`, `docs/autocorrelation.png`.
+
+---
+
+## Carried over to Tuesday
+
+- **Block 10, the control run.** `logger.py --n 500000 --out data/main_control.csv`.
+  Not essential for measurements 1-3, but the fraction at code 511 fell from 0.205 to
+  0.037 over one day; if that continues there may be no usable operating point left.
+- **Walk through the Python.** `logger.py` was written step by step, but
+  `plot_timeseries.py` and `analyse_main_run.py` were handed over finished under time
+  pressure. Both need going through line by line before more analysis code is written,
+  and the next script should be written from scratch again.
+- **Measurements 1, 2 and 3** from the existing data.
+- Recompute the autocorrelation on a second segment to test the 152/160 peaks.
+- Decide whether to re-adjust the trimmer. Against: it breaks comparability with every
+  number recorded so far. For: at 3.7 % crossings, some 64-sample windows already
+  contain none at all.
+
 **Open questions**
 
-- Will the 800 000-sample run show more than two distinct codes? Over several minutes
-  slow drift should widen the distribution — the difference between short-term noise
-  and long-term stability is expected to be the main result of measurement 2.
+- What sets the 0.025 LSB floor? A 1/f-like contribution from the trimmer contact is
+  the obvious candidate given the mechanical behaviour seen elsewhere, but nothing
+  measured so far distinguishes it from a 1/f contribution of the converter or the
+  supply.
 - Histogram for measurement 1 will show two bars, not a bell curve. This needs to be
   addressed explicitly rather than presented as a flaw.
-- Does the measured 784.3 samples/s hold over the full run once the line length is
-  fixed? Any deviation is now attributable to the host side, since the Arduino side
-  is constant by construction.
+- Does an effective-resolution figure derived from the averaged sigma mean anything
+  while VREF is unverified? Resolution and accuracy have to be kept apart.
 
 ---
 
@@ -482,6 +571,8 @@ channel of the RGB LED.
   the analysis can be reproduced without hardware.
 - `data/example_variable_interval.csv` — 1000 samples from before the sketch change,
   kept as evidence for the two-valued sampling interval.
+- `python/analysis/analyse_main_run.py` — averaging law and autocorrelation of the
+  main run; writes `docs/sqrt_n_law.png` and `docs/autocorrelation.png`.
 - `python/analysis/plot_timeseries.py` — reads a capture and writes a raw time series
   and a moving-average figure; runs over both example captures.
 - `python/logger.py` — the acquisition tool. Command line arguments for port, baud
