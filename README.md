@@ -3,7 +3,7 @@
 Measurement and analysis of the analog-to-digital converter (ADC) of an Arduino UNO:
 noise, averaging law, effective resolution, sampling rate.
 
-**Status:** work in progress (day 1 of 7)
+**Status:** work in progress (day 2 of 7)
 
 ## Setup
 
@@ -68,13 +68,34 @@ adjacent codes, which is the precondition for demonstrating the averaging law.
 | Operating point | code boundary 511 / 512 |
 | Short-term noise | σ = 0.457 LSB (200 samples over ≈ 1 s) |
 | Distinct codes | 2 — code 511 seen 141 times, code 512 seen 59 times |
-| Serial link | 115200 baud, raw values, timestamps from `micros()` |
+| Serial link | 115200 baud nominal, raw values, timestamps from `micros()` |
 
 The noise amplitude is smaller than one quantization step, so a single reading can
 never resolve better than 1 LSB. The mean of many readings can: at 141/59 the mean is
 511.295, a value the converter cannot output directly. This is dither, and how much
 sub-LSB information can be recovered from it is the central question this project
 sets out to answer.
+
+### Stability over three days
+
+The operating point was re-checked before any recording on the second day of work.
+The trimmer had not been touched in the intervening period.
+
+| | 2026-08-07, 17:xx | 2026-08-10, 12:40 |
+| :--- | ---: | ---: |
+| split 511 / 512 | 141 / 59 | 41 / 159 |
+| mean [LSB] | 511.295 | 511.795 |
+| sigma [LSB] | 0.457 | 0.405 |
+
+The operating point is still on the same code boundary, but the mean has moved by
++0.5 LSB. The trimmer was deliberately left untouched: a mechanical adjustment on a
+code boundary is riskier than a slightly different split, and the shift is itself a
+measurement of long-term stability rather than a fault to be corrected.
+
+The lower sigma does not indicate less noise. For a two-level process
+σ = sqrt(p·(1−p)), and p = 41/200 = 0.205 gives 0.404 against the 0.405 reported by
+the sketch. Sigma is maximal at a 50/50 split and falls off towards either side, so
+it measures how often the code boundary is crossed, not the amplitude of the noise.
 
 ## Design Decisions
 
@@ -111,6 +132,94 @@ for three reasons:
    conversion itself. Since the sampling rate is one of the quantities being
    measured, the acquisition path is kept as short as possible.
 
+### Output lines are padded to a constant length
+
+The straightforward way to emit a sample is to print the two values and a separator
+directly. That is what the logger sketch did initially, and it produces a line whose
+length depends on the magnitude of the timestamp.
+
+Because the acquisition is transmission-bound (see *Acquisition Timing* below), the
+line length *is* the sampling interval. A variable-length line therefore means a
+sampling rate that changes during the run — stepping by 85 µs each time `micros()`
+gains a digit. This was measured, not assumed.
+
+From the main run onward the sketch formats each sample with
+
+    snprintf(buf, sizeof(buf), "%09lu,%03d", t_us, raw);
+
+zero-padding the timestamp to nine digits and the ADC code to three. Every line is
+then 15 characters and the interval a constant 1275 µs.
+
+The motivation is the autocorrelation analysis. With a variable interval the lag axis
+carries no fixed time unit, so a periodic disturbance smears across neighbouring lags
+instead of appearing at one well-defined period — which would defeat the purpose of
+looking for mains pickup in the first place.
+
+Two limits of this approach are worth stating. Nine digits cover 999 999 999 µs,
+slightly more than the 71.6 minutes after which `micros()` wraps, so the width is
+sufficient for any run this project performs. Three digits for the ADC code hold only
+while the code stays within 100–999; the operating point sits at 511/512 and drift of
+that magnitude is not plausible, but a line of unexpected length in the raw data
+would be a signal that something more fundamental has changed.
+
+## Acquisition Timing
+
+The sampling rate of this measurement chain is not set by the converter. It is set by
+how long it takes to send one line of text.
+
+A single ADC conversion on the ATmega328P takes 13 ADC clock cycles at the default
+prescaler of 128, i.e. roughly 112 µs. Transmitting the resulting line takes longer
+than that, and because the transmission runs from a buffer while the next conversion
+proceeds, the conversion time is hidden entirely. The loop period equals the line
+transmission time.
+
+This was not assumed but measured. Ten consecutive samples read over the serial port
+gave timestamp differences of exactly 1020 µs, with no scatter:
+
+```
+462336,512
+463356,511
+464376,511
+465396,512
+466416,512
+```
+
+Earlier the same day, with a seven-digit timestamp instead of six, the interval was
+1104–1108 µs. The difference of ~85 µs is one character.
+
+**The character time gives the true baud rate.** At 16 MHz in double-speed mode the
+UART divisor is UBRR = 16, so the actual bit rate is
+
+    16 000 000 / (8 × (16 + 1)) = 117 647 baud
+
+against the 115 200 requested — an error of +2.1 %, a known consequence of the
+16 MHz crystal not dividing evenly into the standard baud rates. One character is
+10 bits (start, 8 data, stop), hence 10 / 117 647 = 85.0 µs. The line
+`462336,512\r\n` is 12 characters:
+
+    12 × 85.0 µs = 1020.0 µs
+
+The measured interval matches to the microsecond. The baud rate error has therefore
+been determined from the data alone, without an oscilloscope or a second instrument.
+
+**Consequence for long runs.** Over a 15-minute acquisition `micros()` grows from one
+digit to nine. Without padding, the line length grows with it and the sampling
+interval steps up by 85 µs per digit:
+
+| timestamp digits | chars/line | interval | rate |
+| :--- | ---: | ---: | ---: |
+| 1 | 7 | 595 µs | 1680 /s |
+| 6 | 12 | 1020 µs | 980 /s |
+| 9 (from t = 100 s) | 15 | 1275 µs | 784 /s |
+
+Roughly 89 % of such a run would sit in the last row. With the timestamp padded to a
+fixed nine digits the line is a constant 15 characters and the interval a constant
+1275 µs, giving **784.3 samples/s**.
+
+The variable-rate behaviour is kept here as a documented result rather than removed
+from the record: it is the direct evidence that the acquisition is
+transmission-bound, which is the question measurement 4 sets out to answer.
+
 ## Measurements
 
 _(to be added)_
@@ -129,6 +238,34 @@ voltage cancels out. Only the conversion to millivolts is uncertain.
 
 VREF will be determined without a multimeter using the internal 1.1 V bandgap
 reference of the ATmega328P.
+
+### Baud rate deviates from the nominal value by 2.1 %
+
+The link runs at an actual 117 647 baud rather than the requested 115 200, as derived
+and measured in *Acquisition Timing*. Both ends of the link are driven from the same
+16 MHz crystal-derived divisor, so the two sides agree and no framing errors result.
+
+The consequence is confined to timing: any calculation that assumes 115 200 baud
+underestimates the throughput by 2.1 % and therefore overestimates the sampling
+interval by the same factor. All figures in this project use the measured value.
+
+### Timestamp resolution is 4 µs, not 1 µs
+
+`micros()` on the ATmega328P is derived from Timer0 running with a prescaler of 64,
+so its return value advances in steps of 4 µs despite being expressed in
+microseconds. Every interval measured in this project is therefore quantized to 4 µs.
+This is visible in the raw data: all observed intervals are exact multiples of 4.
+
+At an interval of ~1275 µs the resulting relative uncertainty is below 0.4 % and is
+negligible against the effects being measured.
+
+### Sampling interval differs between the pre-test and the main runs
+
+The noise pre-test samples at a fixed 5 ms spacing, the logger free-runs at 1275 µs.
+Noise correlated in time — mains pickup being the obvious candidate — averages down
+differently at different spacings, so sigma values from the two are not directly
+comparable. Every capture therefore records its sampling interval in the CSV metadata
+header.
 
 ### ADC channel crosstalk on floating inputs
 

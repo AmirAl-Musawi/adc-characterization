@@ -1,4 +1,4 @@
-const int POTI_PIN = A5;
+const int POTI_PIN = A0;
 const int N = 200;
 
 int werte[N];
