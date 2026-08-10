@@ -317,7 +317,64 @@ transmission-bound, which is the question measurement 4 sets out to answer.
 
 ## Measurements
 
-_(to be added)_
+Quantitative results — noise, the averaging law, effective resolution and sampling
+rate — are computed from the 800 000-sample capture and are added as they are
+finished. What follows is the qualitative picture the raw data gives.
+
+### Time series and dither
+
+Two captures of 1000 samples each, taken two hours apart on the same day from the same
+trimmer, which was not touched in between:
+
+| | 18:45 | 20:40 |
+| :--- | ---: | ---: |
+| samples at code 511 | 17.1 % | 3.7 % |
+| mean [LSB] | 511.8290 | 511.9630 |
+| sigma [LSB] | 0.3765 | 0.1888 |
+
+**Near the code boundary — 18:45**
+
+![Raw ADC output, 1000 samples, operating point near the 511/512 boundary](docs/timeseries_near_boundary.png)
+
+![Moving average over 64 samples, operating point near the boundary](docs/dither_near_boundary.png)
+
+**After drifting away from it — 20:40**
+
+![Raw ADC output, 1000 samples, operating point drifted towards code 512](docs/timeseries_drifted.png)
+
+![Moving average over 64 samples, operating point drifted](docs/dither_drifted.png)
+
+The raw plots show what a single reading can do: produce one of two integers. Nothing
+between them is available, and no amount of looking at individual samples changes that.
+
+The averaged curves show what a thousand readings can do. Both settle on values the
+converter is incapable of outputting — 511.83 and 511.96 — and both resolve structure
+far below one quantization step. Averaging N samples of a two-level signal moves the
+quantization from 1 LSB to 1/N LSB; the visible staircase in the lower panels has a
+step height of exactly 1/64 = 0.0156 LSB, which is the direct evidence for that
+statement.
+
+**Why the operating point matters, in one number.** At 18:45 the moving average spans
+511.6875 to 511.9531 and never reaches 512: every window of 64 samples contains at
+least one reading of 511, so every window carries information. At 20:40 it spans
+511.9219 to **512.0000** — the upper end is reached exactly, meaning some windows
+contained no 511 at all. Those windows return the bare code and contribute nothing
+beyond it.
+
+This is the practical limit of dither. It works only while the noise crosses the code
+boundary often enough that a window of the chosen length reliably contains crossings.
+As the operating point drifts away from the boundary, averaging degrades gracefully at
+first and then stops working altogether — not because the mathematics changes, but
+because the crossings run out.
+
+### A note on the drift direction
+
+The main run ended at a mean of 511.785 after a sudden step downwards. The capture at
+20:40, some forty minutes later, is back at 511.963. The step was therefore not
+permanent and not part of a monotonic trend. A thermal or electrical drift would have a
+preferred direction; a mechanical contact that slips and reseats does not. This
+strengthens, without proving, the interpretation given under *Stability within a single
+run*.
 
 ## Sources of Error
 
