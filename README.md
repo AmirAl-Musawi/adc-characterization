@@ -7,7 +7,34 @@ noise, averaging law, effective resolution, sampling rate.
 
 ## Setup
 
-_(to be added)_
+![Measurement setup: Arduino UNO with experimenter shield, trimmer potentiometer on A0](docs/setup.jpg)
+
+The signal source is the trimmer potentiometer on the experimenter shield, connected
+as a voltage divider with its wiper on analog input A0. Nothing is added externally;
+the board is powered and read out through the same USB cable. Full pin usage is listed
+under *Pin Assignment*.
+
+A measurement value travels the following path:
+
+1. The wiper voltage is sampled by the 10-bit successive-approximation ADC of the
+   ATmega328P, referenced to AVCC and clocked with the default prescaler of 128,
+   which puts one conversion at roughly 112 µs.
+2. The sketch reads `micros()` immediately before `analogRead()` and formats both
+   into a line of constant length, `%09lu,%03d`.
+3. The line leaves the ATmega328P over its UART at a nominal 115200 baud — actually
+   117 647, see *Acquisition Timing*.
+4. A second microcontroller on the board, an ATmega16U2, bridges that UART to USB.
+   The host sees it as a virtual COM port, `COM3` on this machine.
+5. `python/logger.py` reads the lines, rejects and counts malformed ones, and writes
+   a CSV with a `#`-prefixed metadata header recording port, baud rate, sample count,
+   bad lines, duration and the sampling interval of that particular capture.
+6. All interpretation — averaging, conversion to volts, statistics — happens
+   afterwards, from the CSV. The acquisition path itself performs no arithmetic.
+
+The Arduino sends continuously and unprompted; there is no handshake and no request
+protocol. Opening the port from the host merely starts reading a stream that is
+already flowing, and it resets the board as a side effect, which is why every capture
+begins with a fixed warm-up before the first line is kept.
 
 ## Hardware
 
@@ -102,6 +129,44 @@ side. The measured values agree with that expression to four decimal places
 (0.171 → 0.37651 against 0.3765 measured; 0.163 → 0.36936 against 0.3694). Sigma here
 is a measure of how often the code boundary is crossed, not of the amplitude of the
 noise, and it falls simply because the signal has drifted away from the boundary.
+
+### Stability within a single run
+
+A continuous capture of 800 000 samples over 17 minutes separates the drift into
+timescales. Divided into ten segments of 102 s each, the first nine are flat: their
+means span 511.9709 to 511.9747, a range of 0.004 LSB. On a quarter-hour timescale the
+setup is therefore stable to better than 0.005 LSB, and the day-long drift is not
+visible at all.
+
+The tenth segment contains a single discrete step. Narrowing it down in 1.3 s slices
+locates a transition with no intermediate value: the mean falls from 511.971 to
+511.785, a change of **0.187 LSB**, and remains at the new level. It occurs at
+t ≈ 1001 s, some 20 s before the end of the run, and is 95 standard errors of an
+8000-sample mean — far outside statistical fluctuation. Nobody was at the bench.
+
+**A change in supply voltage cannot explain it.** The trimmer is a divider fed from the
+same 5 V that supplies AVCC, so the converter measures the divider *ratio* and the
+supply cancels out of the result. This is a ratiometric measurement; a sagging USB rail
+moves input and reference together and leaves the code unchanged. Temperature is
+excluded by the shape of the event — thermal effects ramp, they do not step.
+
+What remains is a change in the divider ratio itself, i.e. mechanical movement at the
+wiper contact. This is consistent with the monotonic drift across three days: a trimmer
+adjusted once and then relaxing, with occasional discrete micro-slips. It is stated
+here as a hypothesis, not a result.
+
+| timescale | observation |
+| :--- | :--- |
+| 3 days | +0.67 LSB, monotonic |
+| 15 minutes | stable to better than 0.005 LSB |
+| single event | 0.187 LSB step in under 1.3 s |
+
+A note on resolution. The signal occupies only two codes, so a change of operating
+point appears solely as a change in the *frequency* of code 511 and can be seen only
+through a windowed mean. Shorter windows buy time resolution at the cost of a noisier
+estimate: at 1000 samples the standard error is 0.006 LSB against a 0.187 LSB step, at
+100 samples it is 0.018 LSB. The limit is a property of a two-level process, not of the
+analysis.
 
 ### Reproducibility
 
@@ -343,3 +408,33 @@ nevertheless sufficient grounds for rejection: interference of any periodic orig
 correlated between successive samples, and correlated contributions do not average
 down as 1/√N. Using such a source would undermine the very measurement it was meant
 to enable.
+
+## Repository Contents
+
+```
+arduino/    sketches: pin scans, the noise pre-test, the logger
+python/     porttest.py (serial path check), logger.py (acquisition)
+data/       raw captures - excluded from the repository, except two examples
+docs/       photographs and figures
+```
+
+Raw captures are not committed. A single main run is 17-18 MB, and Git stores every
+version of a binary in full, so a repository holding them would grow without bound.
+Two small captures are included so that the analysis can be run and the claims in this
+document checked without the hardware.
+
+**`data/example_noise_1k.csv`** — 1000 samples in the final format: timestamp padded to
+nine digits, ADC code to three, constant 15-character lines. Every interval in this
+file is 1276.7 µs.
+
+**`data/example_variable_interval.csv`** — 1000 samples recorded before the sketch was
+changed, kept as evidence for the claim in *Acquisition Timing*. The intervals in this
+file take exactly two values and nothing in between, with the transition at
+t = 1 000 000 µs where the timestamp gains its seventh digit:
+
+```
+python -c "import collections; rows=[l.split(',') for l in open('data/example_variable_interval.csv') if l.strip() and l[0] not in '#s']; t=[int(r[1]) for r in rows]; print(collections.Counter(t[i+1]-t[i] for i in range(len(t)-1)))"
+```
+
+Both files carry the full metadata header describing the conditions under which they
+were recorded.

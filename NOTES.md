@@ -18,7 +18,7 @@ Internal notes on the current state of work.
    Count malformed lines instead of crashing.
 - [✓] Two 1000-sample runs recorded, reproducibility checked.
 - [ ] First plot: raw value over sample index, axis labels and units, saved to `docs/`.
-- [ ] Record at least 800 000 samples in one run for Tuesday's averaging analysis.
+- [✓] Record at least 800 000 samples in one run for Tuesday's averaging analysis.
 
 **Working point check**
 
@@ -138,7 +138,7 @@ behaviour is kept as a documented result, not discarded.
 Revised expectations for the main run: 800 000 samples take about 17 minutes and
 produce roughly 17-18 MB. The control run of 500 000 samples takes about 11 minutes.
 
-**`logger.py`**
+**`logger.py` written (18:35)**
 
 Takes `--port`, `--baud`, `--n`, `--out` and `--note`. Creates the target directory,
 opens the port, waits 2 s, flushes, discards five lines, then reads until `n` valid
@@ -194,6 +194,105 @@ observed mean to within a microsecond.
 This is stronger evidence for the transmission-bound behaviour than the earlier
 comparison of two separate runs, and it settles the case for padding the timestamp
 before the main measurement.
+
+**Sketch rebuilt for constant line length (19:30)**
+
+`adc_logger` now formats each sample with `snprintf(buf, sizeof(buf), "%09lu,%03d", t_us, raw)`.
+The timestamp is still read before `analogRead()`; the formatting happens afterwards
+and does not affect it.
+
+The USB replug planned for this block was dropped. Opening the port from Python
+resets the board over DTR, so `micros()` starts near zero on every capture anyway —
+confirmed by the first timestamp being ~464000 us in three separate runs hours apart.
+The 71.6 minute wraparound is unreachable with 17 minute captures.
+
+**Main run, 800 000 samples (19:45-20:02)**
+
+```
+samples:        800000 of 800000 requested
+bad lines:      0
+duration:       1021.363 s
+effective rate: 783.3 samples/s
+mean interval:  1276.7 us
+```
+
+Predicted 1275.0 us from 15 characters at 85.0 us; measured 1276.7, a deviation of
+0.13 %. Zero bad lines over 800 000 lines.
+
+Distribution over the whole run:
+
+| code | count | fraction |
+| ---: | ---: | ---: |
+| 511 | 25 344 | 0.03168 |
+| 512 | 774 495 | 0.96814 |
+| 513 | 161 | 0.00020 |
+
+mean 511.9685, sigma 0.1758. Cross-check sqrt(p(1-p)) with p = 0.03168 gives 0.1752;
+the remainder comes from the 513s.
+
+The fraction at 511 has fallen from 0.205 at 12:40 to 0.032. The dither is much weaker
+than at the start of the day. This does not invalidate the averaging analysis —
+Var(mean of N) = p(1-p)/N holds exactly for any p — but it does mean sigma is small in
+absolute terms, and it raises the question of how long the operating point remains
+usable at all.
+
+The appearance of code 513 is new. It means the signal crossed the *next* code
+boundary at times, i.e. drifted by more than a full quantization step.
+
+**Drift structure within the main run**
+
+Split into ten segments of 80 000 samples (102 s each):
+
+```
+seg  mean       n(511)  n(513)
+0    511.97469   2045   20
+1    511.97278   2198   20
+2    511.97189   2262   13
+3    511.97267   2202   16
+4    511.97155   2294   18
+5    511.97085   2346   14
+6    511.97135   2301    9
+7    511.97205   2249   13
+8    511.97267   2201   15
+9    511.93471   5246   23
+```
+
+Segments 0-8 span 15 minutes and vary by 0.004 LSB. The setup is therefore stable to
+better than 0.005 LSB over a quarter of an hour — the long drift seen across the day
+does not appear on this timescale.
+
+Segment 9 is different. Narrowing it down in 8000-sample slices (10 s) and then in
+1000-sample slices (1.3 s) locates a single discrete step: the mean falls from 511.971
+to 511.785, a change of **0.187 LSB**, and stays at the new level. The transition
+occurs entirely between two adjacent 1.3 s slices, with no intermediate value, at
+approximately sample 784 000, i.e. t = 1001 s, about 20 s before the end of the run.
+
+The step is 95 standard errors of an 8000-sample mean, so it is not a statistical
+artefact. Nobody was at the bench at the time.
+
+*What it cannot be.* A change in supply voltage is excluded by the topology: the
+trimmer is a divider from the same 5 V that supplies AVCC, so the conversion is
+ratiometric and the supply cancels out of the result. Temperature is excluded by the
+shape — thermal effects ramp, they do not step.
+
+*Working hypothesis.* The divider ratio itself changed, i.e. something moved
+mechanically at the wiper contact. That is consistent with the slow monotonic drift
+across three days: a trimmer set on Friday relaxing, with occasional discrete
+micro-slips. Stated as a hypothesis, not a result.
+
+Three timescales are now quantified:
+
+| timescale | observation |
+| :--- | :--- |
+| 3 days | +0.67 LSB, monotonic |
+| 15 minutes | stable to better than 0.005 LSB |
+| single event | 0.187 LSB step in under 1.3 s |
+
+Resolution limit worth noting: the signal has only two states, so a change shows up
+only as a change in the *frequency* of code 511 and is visible only through a windowed
+mean. Shorter windows give better time resolution but a noisier estimate — at 1000
+samples the standard error is 0.006 LSB against a 0.187 LSB step, at 100 samples it is
+0.018. This is a property of the measurement, not of the analysis code.
 
 **Open questions**
 
@@ -336,6 +435,10 @@ channel of the RGB LED.
   in Python.
 - `python/porttest.py` — opens COM3, waits for the bootloader, flushes the buffer and
   prints ten lines. Used once to verify the serial path before writing `logger.py`.
+- `data/example_noise_1k.csv` — 1000 samples in the final padded format, committed so
+  the analysis can be reproduced without hardware.
+- `data/example_variable_interval.csv` — 1000 samples from before the sketch change,
+  kept as evidence for the two-valued sampling interval.
 - `python/logger.py` — the acquisition tool. Command line arguments for port, baud
   rate, sample count, output path and a free-text note; writes a CSV with a metadata
   header and reports the effective sampling rate.

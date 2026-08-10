@@ -7,7 +7,8 @@ void setup() {
 void loop() {
   unsigned long t_us = micros();
   int raw = analogRead(POTI_PIN);
-  Serial.print(t_us);
-  Serial.print(",");
-  Serial.println(raw);
+  
+  char buf[20];
+  snprintf(buf, sizeof(buf), "%09lu,%03d", t_us, raw);
+  Serial.println(buf);
 }
