@@ -558,8 +558,8 @@ channel of the RGB LED.
 **State of the code**
 
 - `arduino/pin_scan_analog/` — scans A0–A5, used to identify the potentiometer and the LDR
-- `arduino/pin_scan_leds/` — cycles digital pins 2–13, used to identify the LEDs
-- `arduino/pin_scan_buttons/` — reads pins 2–13 with `INPUT_PULLUP`, used to identify the buttons
+- `arduino/pin_scan_led/` — cycles digital pins 2–13, used to identify the LEDs
+- `arduino/pin_scan_button/` — reads pins 2–13 with `INPUT_PULLUP`, used to identify the buttons
 - `arduino/noise_pretest/` — 200 samples, reports min/max/mean/sigma and a value tally
 - `arduino/adc_logger/` — reads A0 and prints one line per sample as
   `micros(),analogRead(A0)`, i.e. elapsed time in µs and the raw ADC value, at
