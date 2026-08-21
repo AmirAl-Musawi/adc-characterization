@@ -465,6 +465,48 @@ run*.
 
 ## Sources of Error
 
+Figures quoted from the datasheet in this section refer to the ATmega328P datasheet,
+document 7810D–AVR–01/15. Section and page references, along with the reasoning behind
+each point, are collected in [`docs/datasheet_notes.md`](docs/datasheet_notes.md).
+
+### Absolute accuracy is limited by the converter itself, and is not measured here
+
+The manufacturer specifies a total unadjusted error of 2.2 LSB typical and 3.5 LSB
+maximum for this converter, with integral non-linearity of 0.6 LSB typical, differential
+non-linearity of 0.3 LSB typical, and gain and offset errors of up to ±3.5 LSB each
+(section 28.9, table 28-8, p. 262). All five are specified at Vcc = Vref = 4.0 V; this
+board runs from USB at a nominal 5 V, so they are indicative for this setup rather than
+directly applicable.
+
+Every one of these is a **systematic** error: the converter reads high or low by an
+amount that does not change from one sample to the next. Averaging removes random
+contributions and leaves systematic ones untouched, so none of these figures is improved
+by anything done in this project.
+
+This sets the boundary of what the results here claim. The measured repeatability of
+0.0054 LSB after averaging is roughly 400 times smaller than the specified absolute
+accuracy, and there is no contradiction between the two numbers because they describe
+different quantities:
+
+- **Precision**, measured here: a *change* of 0.0054 LSB is detectable.
+- **Accuracy**, per datasheet: where the measured value sits in absolute terms is
+  unknown to within a few LSB.
+
+One of the five figures bears directly on the interpretation of the operating point.
+**Differential non-linearity** describes how far the width of an individual code departs
+from the ideal 1 LSB, and it is specified as 0.3 LSB typical, 0.7 LSB maximum. Every
+result here rests on how often the signal crosses the 511/512 boundary, and the observed
+fraction at code 511 is read as a measure of where the input sits between the two codes.
+That reading assumes both codes have their nominal width. It does not affect the noise
+or averaging results — those are ratios, in which a fixed code width cancels — but it
+does limit how precisely the operating point can be located in absolute terms.
+
+The specified resolution of 10 bits is quoted at an ADC clock of 200 kHz over
+−40 °C to +125 °C and 2.7–5.5 V. This project runs the converter at 125 kHz, inside the
+50–200 kHz window required for full resolution and slower than the specified point,
+which is the safe direction: a slower clock gives the sample-and-hold capacitor more
+time to settle.
+
 ### Reference voltage not yet verified
 
 All raw ADC values are converted to voltage assuming VREF = 5.00 V. In practice the
@@ -476,7 +518,16 @@ resolution are all expressed in LSB (least significant bits), where the referenc
 voltage cancels out. Only the conversion to millivolts is uncertain.
 
 VREF will be determined without a multimeter using the internal 1.1 V bandgap
-reference of the ATmega328P.
+reference of the ATmega328P, selected as an input channel via `MUX3:0 = 1110`
+(table 23-4, p. 218).
+
+**The method has a floor that no amount of care removes.** The datasheet specifies the
+bandgap voltage as 1.0 V minimum, 1.1 V typical and 1.2 V maximum at Vcc = 5 V
+(table 28-4, p. 261) — a tolerance of ±9 %. Since the supply voltage is computed as
+Vcc = 1.1 V × 1024 / reading, that tolerance propagates directly into the result. Even
+a perfect reading yields a supply voltage known only to ±9 %. This is a plausibility
+check, not a substitute for a calibrated instrument, and any voltage derived from it
+will be quoted with that uncertainty attached.
 
 ### Baud rate deviates from the nominal value by 2.1 %
 
@@ -509,10 +560,13 @@ header.
 ### ADC channel crosstalk on floating inputs
 
 The ATmega328P has a single ADC shared between all analog channels through a
-multiplexer. Each conversion charges an internal sample-and-hold capacitor to the
-input voltage. On a high-impedance input — an unconnected pin being the extreme
-case — there is not enough charge transfer to fully settle the capacitor within the
-sampling window, so the reading retains part of the previous channel's value.
+multiplexer. Each conversion charges an internal 14 pF sample-and-hold capacitor to the
+input voltage (figure 23-8, p. 212). The capacitor is not discharged between channels,
+and the sampling window is short: the sample-and-hold instant falls 1.5 ADC clock cycles
+after the start of a conversion, i.e. 12 µs at the 125 kHz ADC clock used here. On a
+high-impedance input — an unconnected pin being the extreme case — there is not enough
+charge transfer to settle the capacitor within that window, so the reading retains part
+of the previous channel's value.
 
 This was observed directly while identifying the pin assignment. Covering the LDR
 on A1 changed not only A1 but every subsequent channel, with the effect decaying
@@ -530,9 +584,17 @@ Each channel retains roughly 60–65 % of the previous channel's excursion. A ge
 signal would appear on one channel only; the monotonic decay identifies the effect
 as capacitive carryover rather than crosstalk in the wiring.
 
-The datasheet recommends a source impedance below 10 kΩ for this reason. All
-measurements in this project use the trimmer potentiometer on A0, which is read
-first in every scan and has a low enough source impedance to be unaffected.
+The datasheet recommends a source impedance of 10 kΩ or less for this reason
+(section 23.6.1, p. 212). All measurements in this project use the trimmer
+potentiometer on A0, which is read first in every scan and sits comfortably inside that
+limit: it is a 2 kΩ potentiometer wired as a divider, so the impedance seen from the
+wiper is the two halves in parallel — at most 1 kΩ · 1 kΩ / 2 kΩ = **500 Ω**, twenty
+times below the recommendation.
+
+The behaviour of the floating pins has a specified cause as well. Section 28.2 (p. 259)
+gives an input leakage current of up to 1 µA per I/O pin; an unconnected pin has no
+defined path to any potential, so that leakage together with the 14 pF hold capacitor
+and whatever couples in from the surroundings is what sets its voltage.
 
 The cost of ignoring this is easy to quantify. Measured under identical conditions,
 200 samples each:
@@ -553,14 +615,41 @@ correlated between successive samples, and correlated contributions do not avera
 down as 1/√N. Using such a source would undermine the very measurement it was meant
 to enable.
 
+## What Would Be Done Differently With More Time
+
+Two of these come straight from the datasheet and are worth naming because they are the
+obvious next steps rather than exotic ones.
+
+**Use the ADC noise canceler.** The converter can run while the CPU is halted in sleep
+mode, which removes the switching noise the core and the I/O peripherals inject into the
+analog supply (section 23.6, p. 211). It is not used here because this acquisition is
+transmission-bound: the CPU has to keep the UART fed, so halting it between samples is
+incompatible with a continuous stream at 783 samples/s. Anyone willing to trade sample
+rate for lower noise should start here.
+
+**Move the operating point off a code boundary, or dither deliberately.** The whole
+measurement depends on the signal crossing a code boundary often enough, and the
+trimmer's slow drift steadily reduces that. A deliberately injected dither signal, or a
+source that does not wander, would remove the dependency on an accident of adjustment.
+
+**Verify the reference against a calibrated instrument.** The bandgap method has a ±9 %
+floor set by the reference tolerance itself. A multimeter would replace an estimate with
+a measurement and would turn every LSB figure in this document into a voltage.
+
 ## Repository Contents
 
 ```
 arduino/    sketches: pin scans, the noise pre-test, the logger
 python/     porttest.py (serial path check), logger.py (acquisition)
 data/       raw captures - excluded from the repository, except two examples
-docs/       photographs and figures
+docs/       photographs, figures, and datasheet_notes.md
 ```
+
+**`docs/datasheet_notes.md`** — the ADC chapter of the ATmega328P datasheet worked
+through against the measurements taken here: converter accuracy, conversion timing,
+input circuitry, voltage references, and the points where the datasheet and the
+measurements appear to disagree. Every figure quoted elsewhere in this document is
+sourced there with section and page.
 
 Raw captures are not committed. A single main run is 17-18 MB, and Git stores every
 version of a binary in full, so a repository holding them would grow without bound.

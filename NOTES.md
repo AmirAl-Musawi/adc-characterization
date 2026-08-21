@@ -4,6 +4,154 @@ Internal notes on the current state of work.
 
 ---
 
+## Fri 2026-08-21 — in progress
+
+Resumed after a ten day break. Day 3 of the project.
+
+**Plan**
+
+- [✓] Clean up the working tree, fix line endings
+- [✓] Work through the ADC chapter of the datasheet
+- [ ] Walk through both analysis scripts from day 2 until every line is explainable
+- [ ] Operating point check after 14 days
+- [ ] Measurement 1: noise and distribution
+- [ ] Measurement 3: resolution, precision, accuracy
+- [ ] Correct the averaging law section of the README
+
+### Line endings normalised
+
+The working tree showed seven modified files and 1487 changed lines with no content
+difference — `git diff --ignore-all-space` was empty. An editor had converted every file
+from LF to CRLF. Committing that would have produced a commit that changes every line of
+the repository and says nothing.
+
+A stale `.git/index.lock`, dated 20.08. 17:04 and zero bytes, blocked every writing git
+command while `git status` still worked — status only reads, checkout writes. Deleted
+after confirming with `git status` that no merge or rebase was pending.
+
+Fixed with a `.gitattributes` containing `* text=auto eol=lf`, which pins the repository
+representation to LF regardless of what the local editor does. `git add --renormalize .`
+afterwards reported no changes, so the already committed files were LF all along and the
+problem was purely local.
+
+Commits: `Normalise line endings to LF`, `Fix sketch folder names in documentation`
+(the sketch folders are `pin_scan_led` and `pin_scan_button`, singular; NOTES and the
+roadmap had them in the plural, which would break for anyone following the docs).
+
+### Datasheet, ADC chapter
+
+Document 7810D–AVR–01/15, automotive edition. Written up in `docs/datasheet_notes.md`
+with section and page for every figure. The points that matter for this project:
+
+**Conversion timing (sect. 23.4, p. 208–209).** A normal conversion is 13 ADC clock
+cycles, the first one after enabling the ADC is 25. Full 10-bit resolution requires an
+ADC clock between 50 and 200 kHz. The Arduino core uses a prescaler of 128, which at
+16 MHz gives 125 kHz — the smallest available divisor that stays inside the limit, since
+16 MHz / 64 would give 250 kHz. One cycle is 8 µs, so a conversion is 13 × 8 = **104 µs**.
+
+The figure quoted everywhere for `analogRead()` is 112 µs, exactly one ADC clock cycle
+more. That difference is library overhead: setting ADMUX, starting the conversion,
+polling the flag, reading two registers. This is a prediction to be tested in
+measurement 4 part A — a loop of 1000 reads without serial output should take ~112 ms.
+
+**Accuracy (sect. 28.9, table 28-8, p. 262).** TUE 2.2 LSB typical / 3.5 max, INL 0.6/1.5,
+DNL 0.3/0.7, gain and offset error ±3.5 each, all at Vcc = Vref = 4.0 V. Resolution
+10 bits at ADC clock 200 kHz, −40 °C to +125 °C, 2.70–5.50 V.
+
+All systematic, therefore untouched by averaging. Against the 0.0054 LSB repeatability
+measured here that is a factor of about 400 — and the two numbers do not conflict,
+because one is a fixed offset and the other a statistical spread. The chain is highly
+precise and of unverified accuracy.
+
+Two conditions worth keeping straight. The errors are specified at 4.0 V while this
+board runs at a nominal 5 V, so they are indicative rather than directly applicable.
+And the 200 kHz clock is attached to the *Resolution* row only: at 125 kHz this project
+sits inside the 50–200 kHz window and below the specified point, which is the safe
+direction — a slower clock gives the sample-and-hold capacitor more settling time.
+
+**DNL deserves its own line.** 0.3 LSB typical, 0.7 max. Every result here depends on how
+often the 511/512 boundary is crossed, and the fraction at code 511 is read as a measure
+of where the input sits between the two codes — which assumes nominal code width. With
+DNL up to 0.7 LSB that assumption is not guaranteed. It does not touch the noise or
+averaging results (ratios, the code width cancels), but it limits how precisely the
+operating point can be stated in absolute terms.
+
+**Input circuitry (sect. 23.6.1, p. 212).** Sample-and-hold capacitor 14 pF, series
+resistance 1–100 kΩ, recommended source impedance 10 kΩ or less. Sampling happens
+1.5 ADC clocks after conversion start, i.e. 12 µs at 125 kHz.
+
+The trimmer is 2 kΩ as a divider, so the impedance seen from the wiper is at most
+1 kΩ in parallel with 1 kΩ = **500 Ω**, twenty times inside the recommendation. That is
+the quantitative reason A0 reads cleanly while the unconnected A5 gave σ = 36.5 LSB.
+Section 28.2 (p. 259) adds the missing piece for the floating pins: up to 1 µA of input
+leakage per I/O pin, with no defined path to any potential.
+
+**Bandgap reference (table 28-4, p. 261).** 1.0 V min, 1.1 V typical, 1.2 V max at
+Vcc = 5 V, i.e. **±9 %**. Selected as an input channel with `MUX3:0 = 1110`
+(table 23-4, p. 218); the reference selection bits are REFS1:0 in ADMUX (table 23-3,
+p. 217), Arduino default `01` = AVcc.
+
+This caps the planned VREF determination before it starts. Vcc = 1.1 V × 1024 / reading
+inherits the ±9 % directly, so even a perfect reading gives a supply voltage known only
+to ±9 %. It is a plausibility check, not a multimeter replacement, and it has to be
+written up that way.
+
+**Noise canceler (sect. 23.6, p. 211).** Runs a conversion with the CPU halted in sleep
+mode. Not usable here — the acquisition is transmission-bound and the CPU has to keep
+the UART fed. Goes into the README as an improvement, not into the measurements.
+
+**Also noted, for the hardware demonstration later.** Section 23.6.2 point d: digital
+pins ADC[3..0] must not switch while a conversion is in progress. No LEDs run during
+acquisition today, so it does not apply yet — but the planned LED demonstration does
+exactly that, and the effect should be measured rather than assumed.
+
+**Temperature sensor (sect. 23.8, p. 215).** `MUX3:0 = 1000`, needs the 1.1 V reference,
+sensitivity ~1 LSB/°C, accuracy ±10 °C. Not useful for the drift question: a sensor with
+±10 °C accuracy cannot resolve the temperature changes that would have to correlate with
+a 0.187 LSB step. Recorded because it is the obvious thing to reach for.
+
+### Question 6 — where the datasheet and the measurements appear to disagree
+
+*Sigma smaller than the quantization limit.* Measured σ = 0.176 LSB is below the
+theoretical 1 LSB/√12 = 0.289 LSB. Not a contradiction: the √12 figure assumes the input
+sweeps the full range so the rounding error is uniform over one step. Here the operating
+point is static on a code boundary, the error is two-valued rather than uniform, and a
+lopsided two-level distribution has a smaller variance — √(p(1−p)) = 0.175 for
+p = 0.0317, which is exactly what was measured.
+
+The consequence matters more than the observation: a small σ does not mean sub-step
+resolution. A single sample still returns 511 or 512. This is why `log2(1024/σ)` must
+not be used here — it reports 12.5 effective bits from a 10-bit converter, because its
+precondition (σ larger than one quantization step) is violated.
+
+*Precision beats specified accuracy by ~400×.* No conflict, see above.
+
+*104 µs vs 112 µs.* One ADC clock of library overhead, to be measured directly.
+
+*The ~4.95 Hz component.* Reproduced on three independent 50 000-sample segments, lags
+152/160 repeating at 304/312 and 456/464. The datasheet offers no mechanism. Decidable
+by changing the sampling interval and seeing whether the peak stays at 4.95 Hz (physical)
+or moves (alias). Left open until that test is run.
+
+### README changes made today
+
+- New subsection under *Sources of Error*: absolute accuracy from the datasheet, and why
+  it does not conflict with the measured precision
+- *Reference voltage not yet verified* extended with the ±9 % bandgap tolerance and the
+  register details for the method
+- *ADC channel crosstalk* now quotes the 14 pF capacitor, the 12 µs sampling window, the
+  500 Ω source impedance of the trimmer and the 1 µA leakage figure
+- New section *What Would Be Done Differently With More Time*
+- *Repository Contents* lists `docs/datasheet_notes.md`
+
+### Still open at this point in the day
+
+- Everything from Block 2 onwards: Python walkthrough, operating point, measurements
+- **The averaging law section of the README is still wrong** and must be corrected today.
+  The 0.025 LSB floor is an artefact of the single 0.187 LSB step; see the day 3 plan.
+
+---
+
 ## Mon 2026-08-10 — complete
 
 **Plan**
